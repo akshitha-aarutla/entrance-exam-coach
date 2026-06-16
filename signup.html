@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Signup - Entrance Exam Coach</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+    <h1>Entrance Exam Coach</h1>
+    <nav>
+        <a href="index.html">Home</a>
+        <a href="login.html">Login</a>
+    </nav>
+</header>
+
+<section class="signup-container">
+    <h2>Create Your Account</h2>
+    <div id="errorMessage" class="error-message"></div>
+    <form id="signupForm">
+        <input type="text" id="name" name="name" placeholder="Full Name" autocomplete="name" required>
+        <input type="email" id="email" name="email" placeholder="Email" autocomplete="email" required>
+        <input type="password" id="password" name="password" placeholder="Password (min 8 chars)" autocomplete="new-password" required>
+        <input type="password" id="confirmPassword" name="confirmPassword" placeholder="Confirm Password" autocomplete="new-password" required>
+        <button type="button" onclick="signupUser()" id="signupBtn">Signup</button>
+    </form>
+    <p>Already have an account? <a href="login.html">Login</a></p>
+</section>
+
+<script>
+const API_BASE = "/api";
+
+function showError(message) {
+    const errorDiv = document.getElementById('errorMessage');
+    errorDiv.textContent = message;
+    errorDiv.classList.add('show');
+}
+
+function hideError() {
+    const errorDiv = document.getElementById('errorMessage');
+    errorDiv.classList.remove('show');
+}
+
+async function signupUser() {
+    hideError();
+    const name = document.getElementById('name').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+
+    if (!name || !email || !password || !confirmPassword) {
+        showError("Please fill all fields!");
+        return;
+    }
+    if (password.length < 8) {
+        showError("Password must be at least 8 characters!");
+        return;
+    }
+    if (password !== confirmPassword) {
+        showError("Passwords do not match!");
+        return;
+    }
+
+    const btn = document.getElementById('signupBtn');
+    btn.disabled = true;
+    btn.textContent = "Signing up...";
+
+    try {
+        const res = await fetch(`${API_BASE}/signup`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ name, email, password })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            showError(data.error || "Signup failed. Please try again.");
+            return;
+        }
+
+        alert("Signup successful! Please login.");
+        window.location.href = "login.html";
+    } catch (err) {
+        showError("Could not connect to the server. Please make sure the backend is running.");
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "Signup";
+    }
+}
+</script>
+
+</body>
+</html>

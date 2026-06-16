@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Performance Analysis</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<link rel="stylesheet" href="style.css">
+
+<style>
+body { font-family: Arial, sans-serif; background-color: #f0f8ff; padding:20px; }
+
+header { text-align:center; margin-bottom:20px; }
+
+nav a{
+margin:0 10px;
+text-decoration:none;
+font-weight:bold;
+color:#333;
+}
+
+button{
+padding:10px 20px;
+border-radius:5px;
+background-color:#6495ED;
+color:white;
+border:none;
+cursor:pointer;
+margin-top:10px;
+}
+
+button:hover{
+background-color:#4169E1;
+}
+
+#chartContainer,#progressContainer,#timetable,#analysisContainer{
+width:80%;
+margin:30px auto;
+}
+
+.subject-box{
+background-color:#d0f0c0;
+padding:10px;
+margin:5px 0;
+border-radius:5px;
+}
+
+/* ===== AI Doubt Bot — separate dark section ===== */
+#chatbot{
+width:80%;
+max-width:900px;
+margin:30px auto;
+padding:20px;
+background:#1e1e1e;
+border-radius:15px;
+box-shadow:0 8px 15px rgba(0,0,0,0.3);
+color:#f5f5f5;
+}
+
+#chatbot h2{
+color:#ffffff;
+margin-top:0;
+}
+
+#chatOutput{
+background:#000000;
+color:#f5f5f5;
+padding:12px;
+height:200px;
+overflow-y:auto;
+border-radius:8px;
+border:1px solid #333;
+}
+
+#chatOutput p{
+margin:6px 0;
+}
+
+#chatbot input[type="text"]{
+background:#2a2a2a;
+color:#f5f5f5;
+border:1px solid #444;
+}
+
+#chatbot input[type="text"]::placeholder{
+color:#aaa;
+}
+
+#chatbot .loading-text{
+color:#aaa;
+}
+</style>
+
+</head>
+
+<body>
+
+<header>
+
+<h1>Entrance Exam Coach</h1>
+
+<nav>
+<a href="index.html">Home</a>
+<a href="login.html">Login</a>
+<a href="exam.html">Select Exam</a>
+<a href="mocktest.html">Mock Test</a>
+<a href="analysis.html">Analysis</a>
+</nav>
+
+</header>
+
+
+<section>
+
+<button onclick="window.location.href='exam.html'">
+Take Another Test / Home
+</button>
+
+<button onclick="retakeTest()" style="margin-left:10px;">
+Retake Test (Adaptive)
+</button>
+
+<h2 id="scoreDisplay"></h2>
+
+<div id="chartContainer">
+<canvas id="weakSubjectsChart"></canvas>
+</div>
+
+<div id="analysisContainer">
+<h2>Subject-wise Analysis</h2>
+<div id="subjectAnalysis"></div>
+</div>
+
+<div id="reviewContainer">
+<h2>Review Your Answers</h2>
+<div id="answerReview"></div>
+</div>
+
+<div id="remedialContainer">
+<h2>AI Remedial Recommendations</h2>
+<div id="remedialCards"></div>
+</div>
+
+<div id="timetable">
+<h2>Suggested Study Timetable</h2>
+<div id="daysLeftBanner"></div>
+<div id="studyPlan"></div>
+</div>
+
+<div id="progressContainer">
+<h2>Progress Over Multiple Tests</h2>
+<canvas id="progressChart"></canvas>
+<div id="progressSummary"></div>
+</div>
+
+</section>
+
+<!-- ===================================================== -->
+<!-- AI Doubt Bot — separate, prominent section            -->
+<!-- ===================================================== -->
+<section id="chatbot">
+
+<h2>AI Doubt Bot</h2>
+
+<div id="chatOutput"></div>
+
+<input type="text"
+id="chatInput"
+placeholder="Ask a question..."
+style="width:70%;"
+onkeydown="if(event.key==='Enter'){ event.preventDefault(); askBot(); }">
+
+<button onclick="askBot()">Send</button>
+
+</section>
+
+<script>
+
+const API_BASE = "/api";
+
+// -------------------
+// Load analysis result from sessionStorage (set by mocktest.html)
+// -------------------
+
+const analysisResultRaw = sessionStorage.getItem('analysisResult');
+const examType = sessionStorage.getItem('examType') || "";
+const examDate = sessionStorage.getItem('examDate') || "";
+
+if (!analysisResultRaw) {
+    alert("Please take a mock test first");
+    window.location.href = "mocktest.html";
+}
+
+const analysisResult = JSON.parse(analysisResultRaw);
+const analysis = analysisResult.analysis || {};
+const weakSubjects = analysisResult.weak_subjects || [];
+const subjects = Object.keys(analysis);
+
+
+// -------------------
+// Score Calculation
+// -------------------
+
+const totalQuestions = subjects.reduce((sum, sub) => sum + analysis[sub].total, 0);
+const totalCorrect = subjects.reduce((sum, sub) => sum + analysis[sub].score, 0);
+const overallPercentage = totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0;
+
+document.getElementById("scoreDisplay").innerHTML =
+    `Your Score: ${totalCorrect}/${totalQuestions} (${overallPercentage}%)`;
+
+
+// -------------------
+// Retake Test (adaptive — reuses same subjects, generates new
+// AI questions focused on weak topics, regenerates timetable for
+// remaining days)
+// -------------------
+
+function retakeTest() {
+    const url = "mocktest.html?subjects=" + encodeURIComponent(subjects.join(",")) +
+                "&exam_type=" + encodeURIComponent(examType) +
+                "&exam_date=" + encodeURIComponent(examDate);
+    window.location.href = url;
+}
+
+
+// -------------------
+// Classification badge helper
+// -------------------
+
+function badgeClassFor(classification) {
+    if (classification === "Needs Improvement") return "badge-needs-improvement";
+    if (classification === "Intermediate") return "badge-intermediate";
+    return "badge-proficient";
+}
+
+
+// -------------------
+// Subject-wise Analysis Cards
+// -------------------
+
+const subjectAnalysisDiv = document.getElementById('subjectAnalysis');
+
+subjects.forEach(sub => {
+    const info = analysis[sub];
+    const card = document.createElement('div');
+    card.className = 'subject-analysis-card';
+    card.innerHTML = `
+        <div>
+            <span class="subject-name">${sub}</span>
+            <span class="classification-badge ${badgeClassFor(info.classification)}">${info.classification}</span>
+        </div>
+        <div class="score-text">Score: ${info.score}/${info.total} (${info.percentage}%)</div>
+    `;
+    subjectAnalysisDiv.appendChild(card);
+});
+
+
+// -------------------
+// Answer Review (wrong answers + correct solutions)
+// -------------------
+
+function escapeHtml(str) {
+    if (str === null || str === undefined) return "";
+    return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
+
+const answerReviewDiv = document.getElementById('answerReview');
+const answerReviewRaw = sessionStorage.getItem('answerReview');
+const answerReview = answerReviewRaw ? JSON.parse(answerReviewRaw) : [];
+
+if (answerReview.length === 0) {
+    answerReviewDiv.innerHTML = "<p>No review data available for this test.</p>";
+} else {
+    // Group by subject for readability
+    const bySubject = {};
+    answerReview.forEach(item => {
+        if (!bySubject[item.subject]) bySubject[item.subject] = [];
+        bySubject[item.subject].push(item);
+    });
+
+    let reviewHtml = "";
+    Object.keys(bySubject).forEach(sub => {
+        reviewHtml += `<h3>${escapeHtml(sub)}</h3>`;
+        bySubject[sub].forEach((item, idx) => {
+            const statusClass = item.is_correct ? 'review-correct' : 'review-wrong';
+            const statusLabel = item.is_correct ? 'Correct' : 'Incorrect';
+
+            reviewHtml += `
+                <div class="review-card ${statusClass}">
+                    <div class="review-question">
+                        <b>Q${idx + 1}:</b> ${escapeHtml(item.question)}
+                        <span class="review-status">${statusLabel}</span>
+                    </div>
+                    <div class="review-options">
+                        ${item.options.map(opt => {
+                            let cls = '';
+                            if (opt === item.correct_answer) cls = 'option-correct';
+                            else if (opt === item.student_answer && !item.is_correct) cls = 'option-student-wrong';
+                            return `<div class="review-option ${cls}">${escapeHtml(opt)}</div>`;
+                        }).join('')}
+                    </div>
+                    <div class="review-footer">
+                        <b>Your answer:</b> ${escapeHtml(item.student_answer) || '<i>Not answered</i>'}
+                        &nbsp;|&nbsp;
+                        <b>Correct answer:</b> ${escapeHtml(item.correct_answer)}
+                    </div>
+                </div>
+            `;
+        });
+    });
+
+    answerReviewDiv.innerHTML = reviewHtml;
+}
+
+
+// -------------------
+// Weakest Subject Banner
+// -------------------
+
+let weakest = subjects[0];
+subjects.forEach(sub => {
+    if (analysis[sub].percentage < analysis[weakest].percentage) {
+        weakest = sub;
+    }
+});
+
+const weakDiv = document.createElement("div");
+weakDiv.style.background = "#fff3cd";
+weakDiv.style.padding = "10px";
+weakDiv.style.margin = "10px 0";
+weakDiv.style.borderRadius = "5px";
+weakDiv.innerHTML = `<b>Weakest Subject:</b> ${weakest} (${analysis[weakest].percentage}%)`;
+document.getElementById("chartContainer").prepend(weakDiv);
+
+
+// -------------------
+// Weak Subject Chart (percentage scores)
+// -------------------
+
+const subjectPercentages = subjects.map(sub => analysis[sub].percentage);
+
+const ctx = document.getElementById('weakSubjectsChart').getContext('2d');
+
+new Chart(ctx, {
+    type: 'bar',
+    data: {
+        labels: subjects,
+        datasets: [{
+            label: 'Score %',
+            data: subjectPercentages,
+            backgroundColor: subjectPercentages.map(p => p < 50 ? 'rgba(231,76,60,0.6)' : (p <= 70 ? 'rgba(243,156,18,0.6)' : 'rgba(39,174,96,0.6)')),
+            borderColor: subjectPercentages.map(p => p < 50 ? 'rgba(231,76,60,1)' : (p <= 70 ? 'rgba(243,156,18,1)' : 'rgba(39,174,96,1)')),
+            borderWidth: 1
+        }]
+    },
+    options: {
+        scales: {
+            y: { beginAtZero: true, max: 100, ticks: { stepSize: 10 } }
+        },
+        plugins: {
+            legend: { display: false },
+            title: { display: true, text: 'Subject-wise Score %' }
+        }
+    }
+});
+
+
+// -------------------
+// AI Remedial Recommendations (per weak subject)
+// -------------------
+
+const remedialCardsDiv = document.getElementById('remedialCards');
+
+if (weakSubjects.length === 0) {
+    remedialCardsDiv.innerHTML = "<p>Great job! No weak subjects detected. Keep up the practice to stay sharp.</p>";
+} else {
+    weakSubjects.forEach(sub => {
+        const info = analysis[sub];
+        const topic = (info.weak_topics && info.weak_topics.length > 0) ? info.weak_topics[0] : sub;
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'remedial-card';
+        wrapper.innerHTML = `
+            <h4>${sub} — ${topic}</h4>
+            <p>Score: ${info.percentage}% (${info.classification})</p>
+            <button class="ai-rec-btn" onclick="getRecommendation('${sub}', '${topic.replace(/'/g, "\\'")}', ${info.percentage}, this)">
+                Get AI Recommendation
+            </button>
+            <div class="rec-result" id="rec-${sub.replace(/\s+/g,'_')}"></div>
+        `;
+        remedialCardsDiv.appendChild(wrapper);
+    });
+}
+
+async function getRecommendation(subject, topic, score, btn) {
+    const targetDiv = document.getElementById(`rec-${subject.replace(/\s+/g,'_')}`);
+    targetDiv.innerHTML = '<p class="loading-text">Generating AI recommendation...</p>';
+    btn.disabled = true;
+
+    try {
+        const res = await fetch(`${API_BASE}/remedial-recommendation`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ subject, topic, score, exam_type: examType })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            targetDiv.innerHTML = `<p>${data.error || "Could not generate recommendation."}</p>`;
+            return;
+        }
+
+        targetDiv.innerHTML = `
+            <h5>Learning Objectives</h5>
+            <ul>${(data.learning_objectives || []).map(o => `<li>${o}</li>`).join('')}</ul>
+
+            <h5>Topics to Revise</h5>
+            <ul>${(data.topics_to_revise || []).map(t => `<li>${t}</li>`).join('')}</ul>
+
+            <h5>Explanation</h5>
+            <p>${data.explanation || ''}</p>
+
+            <h5>Practice Activities</h5>
+            ${(data.practice_activities || []).map(a => `
+                <div class="practice-activity">
+                    <b>Problem:</b> ${a.problem || ''}<br>
+                    <b>Expected Answer:</b> ${a.expected_answer || ''}
+                </div>
+            `).join('')}
+
+            <h5>Why this was recommended</h5>
+            <p>${data.concept_gap_rationale || ''}</p>
+        `;
+    } catch (err) {
+        targetDiv.innerHTML = "<p>Could not connect to the server. Please try again.</p>";
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+
+// -------------------
+// Study Timetable (weightage-based, from backend)
+// -------------------
+
+async function loadTimetable() {
+    const studyPlanDiv = document.getElementById('studyPlan');
+    const banner = document.getElementById('daysLeftBanner');
+
+    if (!examType || !examDate) {
+        studyPlanDiv.innerHTML = "<p>Exam date not provided, so a personalized timetable could not be generated.</p>";
+        return;
+    }
+
+    studyPlanDiv.innerHTML = '<p class="loading-text">Generating your personalized timetable...</p>';
+
+    try {
+        const res = await fetch(`${API_BASE}/generate-timetable`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ exam_type: examType, exam_date: examDate, analysis: analysis })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            studyPlanDiv.innerHTML = `<p>${data.error || "Could not generate timetable."}</p>`;
+            return;
+        }
+
+        banner.innerHTML = `
+            <div class="days-left-banner">
+                ${data.days_left} day(s) left until your exam (${data.exam_date})<br>
+                <span style="font-size:14px; font-weight:normal;">
+                    Showing your plan for the next ${data.plan_days} day(s).
+                    ${data.note || ""}
+                </span>
+            </div>`;
+
+        studyPlanDiv.innerHTML = "";
+
+        // Burnout warning check
+        const totalHours = data.timetable.reduce((sum, day) => sum + (day.total_hours || 0), 0);
+        const avgHours = data.timetable.length > 0 ? totalHours / data.timetable.length : 0;
+        if (avgHours > 4) {
+            const burnoutDiv = document.createElement('div');
+            burnoutDiv.style.backgroundColor = "#ffcccc";
+            burnoutDiv.style.padding = "10px";
+            burnoutDiv.style.margin = "10px 0";
+            burnoutDiv.style.borderRadius = "5px";
+            burnoutDiv.innerHTML = "<b>Warning:</b> Your suggested study load is high. Take breaks!";
+            studyPlanDiv.appendChild(burnoutDiv);
+        }
+
+        data.timetable.forEach(day => {
+            const dayCard = document.createElement('div');
+            dayCard.className = 'timetable-day-card';
+
+            let tasksHtml = day.tasks.map(task => `
+                <div class="timetable-task">
+                    <div class="task-info">
+                        <b>${task.subject}</b> — ${task.topic}
+                        <span class="weightage-tag weightage-${task.weightage}">${task.weightage}</span>
+                    </div>
+                    <div class="task-hours">${task.hours} hr${task.hours > 1 ? 's' : ''}</div>
+                </div>
+            `).join('');
+
+            dayCard.innerHTML = `<h4>Day ${day.day} (${day.total_hours} hrs)</h4>${tasksHtml}`;
+            studyPlanDiv.appendChild(dayCard);
+        });
+
+    } catch (err) {
+        studyPlanDiv.innerHTML = "<p>Could not connect to the server. Please make sure the backend is running.</p>";
+    }
+}
+
+loadTimetable();
+
+
+// -------------------
+// Progress Tracker (card-based, from real test history in the database)
+// -------------------
+
+async function loadProgress() {
+    const progressDiv = document.getElementById('progressSummary');
+    const canvas = document.getElementById('progressChart');
+    progressDiv.innerHTML = '<p class="loading-text">Loading your test history...</p>';
+
+    try {
+        const res = await fetch(`${API_BASE}/test-history`, { credentials: "include" });
+        const data = await res.json();
+
+        if (!res.ok) {
+            progressDiv.innerHTML = `<p>${data.error || "Could not load progress history."}</p>`;
+            canvas.style.display = "none";
+            return;
+        }
+
+        const history = data.history || {};
+        const subjectsWithHistory = Object.keys(history);
+
+        if (subjectsWithHistory.length === 0) {
+            progressDiv.innerHTML = "<p>This is your first test — take more tests to see your progress over time!</p>";
+            canvas.style.display = "none";
+            return;
+        }
+
+        // Find the maximum number of attempts across all subjects, so the
+        // x-axis (Attempt 1, Attempt 2, ...) covers everyone.
+        const maxAttempts = Math.max(...subjectsWithHistory.map(sub => history[sub].length));
+        const labels = Array.from({ length: maxAttempts }, (_, i) => `Attempt ${i + 1}`);
+
+        // Consistent colors per subject
+        const subjectColors = {
+            "Physics": "rgba(100,149,237,0.7)",
+            "Chemistry": "rgba(39,174,96,0.7)",
+            "Mathematics": "rgba(243,156,18,0.7)",
+            "Botany": "rgba(155,89,182,0.7)",
+            "Zoology": "rgba(231,76,60,0.7)"
+        };
+        const defaultColors = ["rgba(100,149,237,0.7)", "rgba(39,174,96,0.7)", "rgba(243,156,18,0.7)", "rgba(155,89,182,0.7)", "rgba(231,76,60,0.7)"];
+
+        const datasets = subjectsWithHistory.map((sub, i) => {
+            const attempts = history[sub]; // oldest -> newest
+            const scores = labels.map((_, idx) => attempts[idx] ? attempts[idx].percentage : null);
+
+            return {
+                label: sub,
+                data: scores,
+                backgroundColor: subjectColors[sub] || defaultColors[i % defaultColors.length],
+                borderRadius: 4
+            };
+        });
+
+        canvas.style.display = "block";
+        new Chart(canvas.getContext('2d'), {
+            type: 'bar',
+            data: { labels, datasets },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: { display: true, text: 'Score % by Subject Across Test Attempts' },
+                    legend: { display: true, position: 'top' }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: { stepSize: 10 },
+                        title: { display: true, text: 'Score %' }
+                    },
+                    x: {
+                        title: { display: true, text: 'Test Attempt' }
+                    }
+                }
+            }
+        });
+
+        // Small text summary below the chart: latest change per subject
+        let summaryHtml = "<div class='progress-text-summary'>";
+        subjectsWithHistory.forEach(sub => {
+            const attempts = history[sub];
+            const latest = attempts[attempts.length - 1];
+            let changeHtml = "";
+            if (attempts.length > 1) {
+                const diff = latest.percentage - attempts[attempts.length - 2].percentage;
+                if (diff > 0) {
+                    changeHtml = `<span class="progress-change progress-up">&#9650; +${diff}% since last attempt</span>`;
+                } else if (diff < 0) {
+                    changeHtml = `<span class="progress-change progress-down">&#9660; ${diff}% since last attempt</span>`;
+                } else {
+                    changeHtml = `<span class="progress-change progress-same">No change since last attempt</span>`;
+                }
+            }
+            summaryHtml += `
+                <div class="progress-summary-row">
+                    <b>${sub}:</b> ${latest.percentage}%
+                    <span class="classification-badge ${badgeClassFor(latest.classification)}">${latest.classification}</span>
+                    ${changeHtml}
+                </div>
+            `;
+        });
+        summaryHtml += "</div>";
+        progressDiv.innerHTML = summaryHtml;
+
+    } catch (err) {
+        progressDiv.innerHTML = "<p>Could not connect to the server to load progress history.</p>";
+        canvas.style.display = "none";
+    }
+}
+
+loadProgress();
+
+
+// -------------------
+// AI Doubt Bot
+// -------------------
+
+let chatMsgCounter = 0;
+
+async function askBot() {
+    const input = document.getElementById('chatInput').value.trim();
+    const output = document.getElementById('chatOutput');
+
+    if (!input) return;
+
+    chatMsgCounter++;
+    const msgId = `botTyping-${chatMsgCounter}`;
+
+    output.innerHTML += `<p><b>You:</b> ${input}</p>`;
+    output.innerHTML += `<p id="${msgId}"><b>Bot:</b> <span class="loading-text">Thinking...</span></p>`;
+    document.getElementById('chatInput').value = "";
+    output.scrollTop = output.scrollHeight;
+
+    try {
+        const res = await fetch(`${API_BASE}/chatbot`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ exam_type: examType, message: input })
+        });
+
+        const data = await res.json();
+        const typingEl = document.getElementById(msgId);
+
+        if (res.ok) {
+            typingEl.innerHTML = `<b>Bot:</b> ${data.response}`;
+        } else {
+            typingEl.innerHTML = `<b>Bot:</b> ${data.error || "AI is busy, try again."}`;
+        }
+    } catch (err) {
+        const typingEl = document.getElementById(msgId);
+        if (typingEl) typingEl.innerHTML = `<b>Bot:</b> AI is busy, try again.`;
+    }
+
+    output.scrollTop = output.scrollHeight;
+}
+
+</script>
+
+</body>
+</html>

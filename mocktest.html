@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mock Test</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        body { font-family: 'Poppins', sans-serif; background-color: #f0f8ff; padding: 20px; margin: 0; }
+        header { text-align: center; padding: 20px 0; background: linear-gradient(90deg, #6495ED, #87CEFA); color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        nav a { margin: 0 15px; text-decoration: none; font-weight: 600; color: white; transition: color 0.3s ease; }
+        nav a:hover { color: #ffeb3b; }
+        section { max-width: 900px; margin: 30px auto; padding: 20px; background: #ffffffcc; border-radius: 15px; box-shadow: 0 8px 15px rgba(0,0,0,0.1); }
+        button { padding: 10px 20px; margin: 20px 0; border-radius: 10px; background-color: #6495ED; color: white; font-weight: 600; border: none; cursor: pointer; transition: all 0.3s ease; }
+        button:hover { background-color: #4169E1; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
+        input[type="radio"] { margin-right: 5px; width:auto; }
+        .question-card { 
+            background: #fff; padding: 15px; margin: 15px 0; border-radius: 12px; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1); 
+            opacity: 0; transform: translateY(20px); 
+            animation: fadeInUp 0.5s forwards; 
+        }
+        @keyframes fadeInUp { to { opacity: 1; transform: translateY(0); } }
+        .loading-msg { text-align:center; color:#666; font-style:italic; }
+    </style>
+</head>
+
+<body>
+
+<header>
+  <h1>Entrance Exam Coach</h1>
+  <nav>
+    <a href="index.html">Home</a>
+    <a href="login.html">Login</a>
+    <a href="exam.html">Select Exam</a>
+    <a href="mocktest.html">Mock Test</a>
+    <a href="analysis.html">Analysis</a>
+  </nav>
+</header>
+
+<section>
+    <h2>Mock Test</h2>
+    <div id="mockTestContainer">
+        <p class="loading-msg">Loading questions...</p>
+    </div>
+</section>
+
+<script>
+const API_BASE = "/api";
+
+// Fallback hardcoded question bank (used if AI generation fails)
+const questionBank = {
+    "Physics": [
+        { question: "Unit of force?", options: ["Newton","Joule","Watt","Pascal"], answer: "Newton" },
+        { question: "Speed of light?", options: ["3×10^8 m/s","3×10^6 m/s","3×10^5 m/s","3×10^7 m/s"], answer: "3×10^8 m/s" },
+        { question: "Acceleration due to gravity?", options: ["9.8 m/s²","10 m/s²","8 m/s²","9 m/s"], answer: "9.8 m/s²" }
+    ],
+    "Chemistry": [
+        { question: "Which is a chemical element?", options: ["Water","Oxygen","Salt","Sugar"], answer: "Oxygen" },
+        { question: "Atomic number of Hydrogen?", options: ["1","2","3","4"], answer: "1" },
+        { question: "HCl is what type of acid?", options: ["Strong","Weak","Moderate","None"], answer: "Strong" }
+    ],
+    "Mathematics": [
+        { question: "Derivative of x^2?", options: ["2x","x","x^2","1"], answer: "2x" },
+        { question: "Integral of 1/x dx?", options: ["ln|x|","x","x^2","1/x"], answer: "ln|x|" },
+        { question: "Value of sin(90°)?", options: ["1","0","0.5","-1"], answer: "1" }
+    ],
+    "Botany": [
+        { question: "Which part of plant performs photosynthesis?", options: ["Root","Leaf","Stem","Flower"], answer: "Leaf" }
+    ],
+    "Zoology": [
+        { question: "Humans have how many heart chambers?", options: ["2","3","4","5"], answer: "4" }
+    ]
+};
+
+const urlParams = new URLSearchParams(window.location.search);
+let selectedSubjects = urlParams.has('subjects') ? urlParams.get('subjects').split(',') : [];
+let examType = urlParams.get('exam_type') || sessionStorage.getItem('examType') || "";
+let examDate = urlParams.get('exam_date') || sessionStorage.getItem('examDate') || "";
+
+let studentAnswers = {};
+let displayedQuestions = {};
+
+// A representative "topic" per subject — used as fallback if no prior test data exists
+const SUBJECT_TOPIC_HINT = {
+    "Physics": "Mechanics",
+    "Chemistry": "Physical Chemistry",
+    "Mathematics": "Algebra",
+    "Botany": "Plant Physiology",
+    "Zoology": "Human Physiology"
+};
+
+// Holds the student's last test results per subject (fetched at startup),
+// used to pick which topic to focus on and how difficult questions should be.
+let lastResults = {};
+
+async function fetchLastResults() {
+    try {
+        const res = await fetch(`${API_BASE}/last-results`, { credentials: "include" });
+        if (res.ok) {
+            const data = await res.json();
+            lastResults = data.last_results || {};
+        }
+    } catch (err) {
+        lastResults = {};
+    }
+}
+
+async function fetchQuestionsForSubject(sub) {
+    const prior = lastResults[sub];
+    // If the student has a previous weak topic in this subject, drill that;
+    // otherwise fall back to a representative topic.
+    const topic = (prior && prior.weak_topics && prior.weak_topics.length > 0)
+        ? prior.weak_topics[0]
+        : (SUBJECT_TOPIC_HINT[sub] || sub);
+
+    const previousPercentage = prior ? prior.percentage : null;
+
+    try {
+        const res = await fetch(`${API_BASE}/generate-questions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                exam_type: examType,
+                subject: sub,
+                topic: topic,
+                count: 10,
+                previous_percentage: previousPercentage
+            })
+        });
+        const data = await res.json();
+        if (res.ok && data.questions && data.questions.length > 0) {
+            return { questions: data.questions, topic: topic };
+        }
+        throw new Error("No AI questions returned");
+    } catch (err) {
+        // Fallback to hardcoded bank
+        const bank = questionBank[sub] || [];
+        const shuffled = [...bank].sort(() => 0.5 - Math.random());
+        return { questions: shuffled.slice(0, Math.min(3, shuffled.length)), topic: topic };
+    }
+}
+
+// Topic actually used (and drilled) for each subject in this test
+let topicUsedForSubject = {};
+
+async function generateMockTest() {
+    const container = document.getElementById("mockTestContainer");
+
+    if (selectedSubjects.length === 0) {
+        container.innerHTML = "<p>No subjects selected!</p>";
+        return;
+    }
+
+    container.innerHTML = '<p class="loading-msg">Loading questions...</p>';
+
+    await fetchLastResults();
+
+    let qNum = 1;
+    displayedQuestions = {};
+    topicUsedForSubject = {};
+    let html = "";
+
+    for (const sub of selectedSubjects) {
+        const { questions: selectedQs, topic } = await fetchQuestionsForSubject(sub);
+        displayedQuestions[sub] = selectedQs;
+        topicUsedForSubject[sub] = topic;
+
+        selectedQs.forEach(q => {
+            html += `
+             <div class="question-card">
+                  <p><b>Q${qNum} (${sub}):</b> ${q.question}</p>
+                 ${q.options.map(opt =>
+                 `<input type="radio" name="q${qNum}" value="${opt.replace(/"/g, '&quot;')}" onclick="saveAnswer('${sub}', ${qNum}, this.value)"> ${opt}<br>`
+                 ).join("")}
+             </div>
+            `;
+            qNum++;
+        });
+    }
+
+    html += `<button onclick="submitTest()">Submit Test</button>`;
+    container.innerHTML = html;
+}
+
+function saveAnswer(sub, qIndex, ans) {
+    if (!studentAnswers[sub]) studentAnswers[sub] = {};
+    studentAnswers[sub][qIndex] = ans;
+}
+
+async function submitTest() {
+    // Build results payload: per-subject score, total, weak topics
+    const results = {};
+    // Build a detailed review list for the analysis page (Q, options,
+    // student's answer, correct answer, subject, topic)
+    const reviewList = [];
+    let qNum = 1;
+
+    for (const sub of selectedSubjects) {
+        const questions = displayedQuestions[sub];
+        let correct = 0;
+        const weakTopics = [];
+
+        questions.forEach(q => {
+            const given = (studentAnswers[sub] && studentAnswers[sub][qNum]) || null;
+            const isCorrect = given === q.answer;
+
+            if (isCorrect) {
+                correct++;
+            } else {
+                // Mark the topic that was drilled in this test as still weak
+                const topic = topicUsedForSubject[sub] || SUBJECT_TOPIC_HINT[sub] || sub;
+                if (!weakTopics.includes(topic)) weakTopics.push(topic);
+            }
+
+            reviewList.push({
+                subject: sub,
+                topic: topicUsedForSubject[sub] || SUBJECT_TOPIC_HINT[sub] || sub,
+                question: q.question,
+                options: q.options,
+                student_answer: given,
+                correct_answer: q.answer,
+                is_correct: isCorrect
+            });
+
+            qNum++;
+        });
+
+        results[sub] = {
+            score: correct,
+            total: questions.length,
+            weak_topics: weakTopics
+        };
+    }
+
+    try {
+        const res = await fetch(`${API_BASE}/analyze-results`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ exam_type: examType, results: results })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            alert(data.error || "Could not submit test results. Please login and try again.");
+            return;
+        }
+
+        // Save analysis + exam info + answer review for analysis.html
+        sessionStorage.setItem('examType', examType);
+        sessionStorage.setItem('examDate', examDate);
+        sessionStorage.setItem('analysisResult', JSON.stringify(data));
+        sessionStorage.setItem('answerReview', JSON.stringify(reviewList));
+
+        window.location.href = "analysis.html";
+    } catch (err) {
+        alert("Could not connect to the server. Please make sure the backend is running.");
+    }
+}
+
+generateMockTest();
+</script>
+
+</body>
+</html>

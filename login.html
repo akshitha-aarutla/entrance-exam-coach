@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login - Entrance Exam Coach</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+    <h1>Entrance Exam Coach</h1>
+    <nav>
+        <a href="index.html">Home</a>
+        <a href="signup.html">Signup</a>
+    </nav>
+</header>
+
+<section class="login-container">
+    <h2>Login to Your Account</h2>
+    <div id="errorMessage" class="error-message"></div>
+    <form id="loginForm">
+        <input type="email" id="loginEmail" name="email" placeholder="Email" autocomplete="email" required>
+        <input type="password" id="loginPassword" name="password" placeholder="Password" autocomplete="current-password" required>
+        <button type="button" onclick="loginUser()" id="loginBtn">Login</button>
+    </form>
+    <p>Don't have an account? <a href="signup.html">Signup</a></p>
+</section>
+
+<script>
+const API_BASE = "/api";
+
+function showError(message) {
+    const errorDiv = document.getElementById('errorMessage');
+    errorDiv.textContent = message;
+    errorDiv.classList.add('show');
+}
+
+function hideError() {
+    const errorDiv = document.getElementById('errorMessage');
+    errorDiv.classList.remove('show');
+}
+
+async function loginUser() {
+    hideError();
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+
+    if (!email || !password) {
+        showError("Please enter both email and password.");
+        return;
+    }
+
+    const btn = document.getElementById('loginBtn');
+    btn.disabled = true;
+    btn.textContent = "Logging in...";
+
+    try {
+        const res = await fetch(`${API_BASE}/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ email, password })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            showError(data.error || "Login failed. Please try again.");
+            return;
+        }
+
+        localStorage.setItem('userName', data.user.name);
+        localStorage.setItem('userEmail', data.user.email);
+        localStorage.setItem('loggedInUser', data.user.email);
+
+        window.location.href = "index.html";
+    } catch (err) {
+        showError("Could not connect to the server. Please make sure the backend is running.");
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "Login";
+    }
+}
+</script>
+
+</body>
+</html>

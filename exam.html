@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Entrance Exam Coach - Select Exam</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <h1>Entrance Exam Coach</h1>
+  <nav>
+    <a href="index.html">Home</a>
+    <a href="login.html">Login</a>
+    <a href="mocktest.html">Mock Test</a>
+    <a href="analysis.html">Analysis</a>
+  </nav>
+</header>
+
+<section>
+    <h2>Select the Exam You Want to Prepare For</h2>
+
+    <select id="examSelect" onchange="showSubjects()">
+        <option value="">-- Select Exam --</option>
+        <option value="jee_main">JEE Mains </option>
+        <option value="jee_advanced">JEE Advanced</option>
+        <option value="eamcet">EAMCET </option>
+        <option value="eapcet"> EAPCET </option>
+        <option value="neet">NEET</option>
+    </select>
+
+    <h3>Select Subjects</h3>
+    <div id="subjectsContainer"></div>
+
+    <div class="exam-date-step">
+        <h3>When is your exam?</h3>
+        <label for="examDate">Target Exam Date:</label>
+        <input type="date" id="examDate" name="examDate">
+    </div>
+
+    <button onclick="startMockTest()">Start Mock Test</button>
+</section>
+
+<script>
+function showSubjects() {
+    const exam = document.getElementById("examSelect").value;
+    const container = document.getElementById("subjectsContainer");
+    let subjects = [];
+
+    if (exam === "jee_main") subjects = ["Physics", "Chemistry", "Mathematics"];
+    else if (exam === "jee_advanced") subjects = ["Physics", "Chemistry", "Mathematics"];
+    else if (exam === "eamcet") subjects = ["Mathematics", "Physics", "Chemistry", "Botany", "Zoology"];
+    else if (exam === "eapcet") subjects = ["Botany", "Zoology", "Physics", "Chemistry", "Mathematics"];
+    else if (exam === "neet") subjects = ["Physics", "Chemistry", "Botany", "Zoology"];
+
+    container.innerHTML = "";
+    subjects.forEach(sub => {
+        container.innerHTML += `<label><input type="checkbox" value="${sub}"> ${sub}</label>`;
+    });
+}
+
+function startMockTest() {
+    const examType = document.getElementById("examSelect").value;
+    const examDate = document.getElementById("examDate").value;
+    const checkedSubjects = document.querySelectorAll('input[type="checkbox"]:checked');
+
+    if (!examType) {
+        alert("Please select an exam");
+        return;
+    }
+    if (checkedSubjects.length === 0) {
+        alert("Please select at least one subject");
+        return;
+    }
+    if (!examDate) {
+        alert("Please select your target exam date");
+        return;
+    }
+
+    const subjectsArray = Array.from(checkedSubjects).map(cb => cb.value);
+
+    // Store exam selection details for use across mocktest.html and analysis.html
+    sessionStorage.setItem('examType', examType);
+    sessionStorage.setItem('examDate', examDate);
+    sessionStorage.setItem('selectedSubjects', JSON.stringify(subjectsArray));
+
+    const url = "mocktest.html?subjects=" + encodeURIComponent(subjectsArray.join(",")) +
+                "&exam_type=" + encodeURIComponent(examType) +
+                "&exam_date=" + encodeURIComponent(examDate);
+    window.location.href = url;
+}
+</script>
+
+</body>
+</html>

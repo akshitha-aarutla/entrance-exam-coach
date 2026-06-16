@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Entrance Exam Coach</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <div class="logo-container">
+            <img src="/frontend/Dog Education Logo.jpg" alt="Exam Coach Logo" class="logo">
+            <h1>Entrance Exam Coach</h1>
+        </div>
+        <nav>
+            <a href="index.html">Home</a>
+            <a href="login.html">Login</a>
+            <a href="signup.html">Signup</a>
+        </nav>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-left">
+            <h2>Welcome to Your Personalized Exam Coach!</h2>
+            <p>
+                Prepare smarter, not harder. Take mock tests, get topic-wise analysis, and receive a personalized timetable tailored to your weak areas. Improve continuously and track your progress with detailed graphs and insights.
+            </p>
+            <button onclick="startPreparation()">Start Preparation</button>
+        </div>
+        <div class="hero-right">
+            <img src="/frontend/home page img.jpg" alt="Entrance Exam Coach" class="hero-img">
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features">
+        <h2>Features to Help You Succeed</h2>
+        <div class="cards-container">
+            <div class="feature-card">
+                <img src="/frontend/performance analysis  logo.jpg" alt="Performance Icon" class="card-icon">
+                <h3>Performance Analysis</h3>
+                <p>Get topic-wise analysis after each mock test to understand your strengths and weaknesses.</p>
+            </div>
+            <div class="feature-card">
+                <img src="/frontend/weak topic detection.jpg" alt="Weak Topics Icon" class="card-icon">
+                <h3>Weak Topics Detection</h3>
+                <p>Identify the topics you struggle with and focus on improving them effectively.</p>
+            </div>
+            <div class="feature-card">
+                <img src="/frontend/study plan logo.jpg" alt="Study Plan Icon" class="card-icon">
+                <h3>Study Plan</h3>
+                <p>Receive a personalized timetable based on your performance and target exams.</p>
+            </div>
+            <div class="feature-card">
+                <img src="/frontend/progress graph logo.jpg" alt="Progress Graph Icon" class="card-icon">
+                <h3>Progress Graph</h3>
+                <p>Track your learning progress with visual graphs to stay motivated.</p>
+            </div>
+            <div class="feature-card">
+                <img src="/frontend/mock test logo.jpg" alt="Mock Test Icon" class="card-icon">
+                <h3>Mock Test Interface</h3>
+                <p>Take subject-wise mock tests with randomized questions to improve your knowledge.</p>
+            </div>
+            <div class="feature-card">
+                <img src="/frontend/AI chatbot logo.jpg" alt="AI Chatbot Icon" class="card-icon">
+                <h3>AI Chatbot</h3>
+                <p>Ask questions and clear doubts instantly with our integrated AI assistant.</p>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        const API_BASE = "/api";
+
+        async function startPreparation() {
+            try {
+                const res = await fetch(`${API_BASE}/me`, { credentials: "include" });
+                const data = await res.json();
+
+                if (!data.logged_in) {
+                    alert("Please login to start preparation!");
+                    window.location.href = "login.html";
+                    return;
+                }
+
+                window.location.href = "exam.html";
+            } catch (err) {
+                alert("Could not connect to the server. Please make sure the backend is running.");
+            }
+        }
+    </script>
+</body>
+</html>
