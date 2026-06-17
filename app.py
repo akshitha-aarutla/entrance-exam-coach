@@ -907,6 +907,143 @@ Give a clear, concise, encouraging answer (max 100 words) appropriate for an ent
 
 
 # -----------------------------------------------------------------
+# Admin Stats Dashboard
+# -----------------------------------------------------------------
+# Simple password-protected page showing usage numbers: total users,
+# total tests taken, breakdown by exam type, average scores, and
+# recent signups. Password is set via the ADMIN_PASSWORD environment
+# variable (set this in Render's dashboard under Environment).
+# -----------------------------------------------------------------
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "changeme123")
+
+
+@app.route("/admin/stats", methods=["GET"])
+def admin_stats():
+    provided_password = request.args.get("password", "")
+    if provided_password != ADMIN_PASSWORD:
+        return """
+            <html><body style="font-family:sans-serif; max-width:400px; margin:80px auto; text-align:center;">
+                <h2>Admin Stats</h2>
+                <form method="get">
+                    <input type="password" name="password" placeholder="Enter admin password"
+                           style="padding:10px; width:100%; box-sizing:border-box; margin-bottom:10px;">
+                    <button type="submit" style="padding:10px 20px; width:100%;">View Stats</button>
+                </form>
+            </body></html>
+        """, 401
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT COUNT(*) as total FROM users")
+    total_users = cur.fetchone()["total"]
+
+    cur.execute("SELECT COUNT(*) as total FROM test_results")
+    total_tests = cur.fetchone()["total"]
+
+    cur.execute("""
+        SELECT exam_type, COUNT(*) as count
+        FROM test_results
+        GROUP BY exam_type
+        ORDER BY count DESC
+    """)
+    exam_breakdown = cur.fetchall()
+
+    cur.execute("""
+        SELECT subject, AVG(CAST(score AS FLOAT) / total_questions * 100) as avg_pct
+        FROM test_results
+        GROUP BY subject
+        ORDER BY avg_pct ASC
+    """)
+    subject_avg = cur.fetchall()
+
+    cur.execute("""
+        SELECT name, email, created_at
+        FROM users
+        ORDER BY created_at DESC
+        LIMIT 10
+    """)
+    recent_signups = cur.fetchall()
+
+    cur.execute("""
+        SELECT u.name, t.exam_type, t.subject, t.score, t.total_questions, t.test_date
+        FROM test_results t
+        JOIN users u ON u.id = t.user_id
+        ORDER BY t.test_date DESC
+        LIMIT 15
+    """)
+    recent_tests = cur.fetchall()
+
+    conn.close()
+
+    def rows_html(rows, columns):
+        html = "<tr>" + "".join(f"<th>{c}</th>" for c in columns) + "</tr>"
+        for row in rows:
+            html += "<tr>" + "".join(f"<td>{row[c]}</td>" for c in columns) + "</tr>"
+        return html
+
+    exam_rows = "".join(
+        f"<tr><td>{r['exam_type']}</td><td>{r['count']}</td></tr>" for r in exam_breakdown
+    )
+    subject_rows = "".join(
+        f"<tr><td>{r['subject']}</td><td>{round(r['avg_pct'], 1)}%</td></tr>" for r in subject_avg
+    )
+    signup_rows = "".join(
+        f"<tr><td>{r['name']}</td><td>{r['email']}</td><td>{r['created_at'][:10]}</td></tr>"
+        for r in recent_signups
+    )
+    test_rows = "".join(
+        f"<tr><td>{r['name']}</td><td>{r['exam_type']}</td><td>{r['subject']}</td>"
+        f"<td>{r['score']}/{r['total_questions']}</td><td>{r['test_date'][:10]}</td></tr>"
+        for r in recent_tests
+    )
+
+    html = f"""
+    <html>
+    <head>
+        <title>Admin Stats — Entrance Exam Coach</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #333; }}
+            h1 {{ color: #4169E1; }}
+            h2 {{ margin-top: 40px; color: #4169E1; border-bottom: 2px solid #6495ED; padding-bottom: 5px; }}
+            .stat-cards {{ display: flex; gap: 20px; margin: 20px 0; flex-wrap: wrap; }}
+            .stat-card {{ background: #f0f8ff; padding: 20px 30px; border-radius: 12px; text-align: center; flex: 1; min-width: 150px; }}
+            .stat-card .number {{ font-size: 32px; font-weight: bold; color: #4169E1; }}
+            .stat-card .label {{ font-size: 14px; color: #666; }}
+            table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
+            th, td {{ text-align: left; padding: 8px 12px; border-bottom: 1px solid #ddd; }}
+            th {{ background: #6495ED; color: white; }}
+            tr:nth-child(even) {{ background: #f9f9f9; }}
+        </style>
+    </head>
+    <body>
+        <h1>Entrance Exam Coach — Admin Stats</h1>
+
+        <div class="stat-cards">
+            <div class="stat-card"><div class="number">{total_users}</div><div class="label">Total Users</div></div>
+            <div class="stat-card"><div class="number">{total_tests}</div><div class="label">Total Tests Taken</div></div>
+        </div>
+
+        <h2>Tests by Exam Type</h2>
+        <table><tr><th>Exam Type</th><th>Tests Taken</th></tr>{exam_rows}</table>
+
+        <h2>Average Score % by Subject (lower = needs more attention)</h2>
+        <table><tr><th>Subject</th><th>Average Score %</th></tr>{subject_rows}</table>
+
+        <h2>Recent Signups</h2>
+        <table><tr><th>Name</th><th>Email</th><th>Signed Up</th></tr>{signup_rows}</table>
+
+        <h2>Recent Test Attempts</h2>
+        <table><tr><th>Student</th><th>Exam</th><th>Subject</th><th>Score</th><th>Date</th></tr>{test_rows}</table>
+
+        <p style="margin-top:40px; color:#999; font-size:12px;">Refresh the page to see updated numbers.</p>
+    </body>
+    </html>
+    """
+    return html
+
+
+# -----------------------------------------------------------------
 # Serve frontend files (so the whole site can run from one Flask server)
 # -----------------------------------------------------------------
 @app.route("/")
